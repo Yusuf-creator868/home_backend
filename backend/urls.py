@@ -3,6 +3,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from Homes.views import HomePage, HomeDetailPage, get_cart, AddItem, product_in_card, delhome, create_home, userhomes, userdelhome, create_profile, get_my_profile, get_gallary
+from User.views import *
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -18,8 +19,10 @@ urlpatterns = [
     path("api/get_my_profile/", get_my_profile, name="createhome"),
     path('userdelethome/<int:pk>', userdelhome, name='userdeletehome'),
     path("get_gallary/<int:pk>", get_gallary),
-
-    path("chat/", include("User.urls"))
+    path("private/rooms/", get_rooms),
+    path('private_conversation', private_conversation, name = 'private_conversation'),
+    path('private_messages/<int:conversation_id>', private_messages, name = 'private_conversation'),
+    
     
 ]
 

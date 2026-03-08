@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import *
-from Homes.views import userhomes
+from Homes.views import *
 
 
 urlpatterns = [
@@ -10,10 +10,7 @@ urlpatterns = [
     path("register/", register),
     path("authenticated/", is_authenticated),
     path('userhomes/', userhomes, name='user-posts'),
-
-    path('conversations/', ConversationListCreateView.as_view(), name = 'conversations_list'),
-    path('conversations/<int:conversation_id>/messages/', MessageListCreateView.as_view(), name = 'message_list_create'),
-    path('conversations/<int:conversation_id>/messages/<int:pk>/', MessageRetrievDestroyView.as_view(), name = 'message_detail_destroy'),
-
+    # path('chatview/', chat_view, name = 'chat_view'),
+    # path('chatpost/', chat_post, name = 'chat_post'),
 
 ]

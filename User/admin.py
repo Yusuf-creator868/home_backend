@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import *
 
-admin.site.register(Conversetion)
-admin.site.register(Message)
+admin.site.register(PrivateConversation)
+admin.site.register(PrivateMessage)
 
 # Register your models here.

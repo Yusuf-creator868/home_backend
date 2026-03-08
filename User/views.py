@@ -27,17 +27,17 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             res.set_cookie(
                 key="access_token",
                 value= access_token,
-                httponly=True,
-                secure=True,     # only over HTTPS
-                samesite="None",
+                httponly=False,
+                secure=False,     # only over HTTPS
+                samesite="Lax",
                 path="/"
             )
             res.set_cookie(
                 key="refresh_token",
                 value=refresh_token,
-                httponly=True,
-                secure=True,     # only over HTTPS
-                samesite="None",
+                httponly=False,
+                secure=False,     # only over HTTPS
+                samesite="Lax",
                 path="/"
             )   
             return res
@@ -66,9 +66,9 @@ class CusromRefreshTokenView(TokenRefreshView):
             res.set_cookie(
                 key="access_token",
                 value=  access_token ,
-                httponly= True,
-                secure=True,
-                samesite = "None",
+                httponly= False,
+                secure=False,
+                samesite = "Lax",
                 path="/"
             )
             return res
@@ -109,90 +109,46 @@ def register(request):
     return Response(serializer.errors)
 
 
-class ConversationListCreateView(generics.ListCreateAPIView):
-     
-     serializer_class = ConversationSerializer
-     permission_classes = [IsAuthenticated]
 
-     def get_queryset(self):
-          return (Conversetion.objects.filter(participants = self.request.user).prefetch_related('participants'))
 
-     def create(self, request, *args, **kwargs):
-        participants_data = request.data.get('participants', [])
-
-        if len(participants_data) != 2:
-             return Response(
-                  {'error': "A conversetion need exactly two particiapants"},
-                  status = status.HTTP_400_BAD_REQUEST
-             )
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def private_conversation(request):
+    user1 = request.user
+    user2_id = request.data.get("user_id")
+    
+    user2 = get_object_or_404(User, id=user2_id)
         
-        if str(request.user.id) not in map(str, participants_data):
-             return Response(
-                  {'error': "You are not a participant of this conversation"},
-                  status = status.HTTP_403_FORBIDDEN
-             )
-        
-        users = User.objects.filter(id__in = participants_data)
-        if users.count() != 2:
-             return Response(
-                  {'error': "A conversetion need exactly two particiapants"},
-                  status = status.HTTP_400_BAD_REQUEST
-             )
-        
-        existing_conversation = Conversetion.objects.filter(
-             participants__id = participants_data[0]
-        ).filter(
-              participants__id = participants_data[1]
-        ).distinct()
+    conversation = PrivateConversation.objects.filter(participants = user1).filter(participants = user2).first()     
+    
+    if not conversation:
+        conversation = PrivateConversation.objects.create()
+        conversation.participants.add(user1, user2)
+    
+    serializer = PrivateConversationSerializer(conversation)
+    return Response(serializer.data)
 
-        if existing_conversation.exists():
-             return Response(
-                  {'error': "A conversetion already exists between these particiapants"},
-                  status = status.HTTP_400_BAD_REQUEST
-             )
-        
-        conversetion = Conversetion.objects.create()
-        conversetion.participants.set(users)
 
-        serializer = self.get_serializer(conversetion)
-        return Response(serializer.data, status = status.HTTP_201_CREATED)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_rooms(request):
+    user = request.user
+    rooms = PrivateConversation.objects.filter(participants = user)
+    serializer = PrivateConversationSerializer(rooms, many=True,  context={'request': request})
+    return Response(serializer.data)
 
-class MessageListCreateView(generics.ListCreateAPIView):
-     permission_classes = [IsAuthenticated]
 
-     def get_queryset(self):
-          conversation_id = self.kwargs['converstaion_id']
-          converstion = self.get_conversation(conversation_id)
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def private_messages(request, conversation_id):
 
-          return converstion.messages.order_by('timestamp')
-     
-     def get_serializer_class(self):
-          if self.request.method == "POST":
-               return CreateMessageSerializer
-          return MessageSerializer
-     
-     def perform_create(self, serializer):
-        print("Imcoming conversation", self.request.data)
-        conversation_id = self.kwargs['converstaion_id']
-        converstion = self.get_conversation(conversation_id)
-        serializer.save(sender = self.request.user, conversation = converstion)
+    conversation = get_object_or_404(PrivateConversation, id=conversation_id)
 
-     def get_conversation(self, conversation_id):
-          conversation = get_object_or_404(Conversetion, id=conversation_id)
-          if self.request.user not in conversation.participants.all():
-               raise PermissionDenied("You are not a participant of this conversation")
-          return conversation
-     
-class MessageRetrievDestroyView(generics.RetrieveDestroyAPIView):
-     permission_classes = [IsAuthenticated]
-     serializer_class = MessageSerializer
+    if request.user not in conversation.participants.all():
+        return Response({"error": "Not allowed"}, status=403)
 
-     def get_queryset(self):
-          conversation_id = self.kwargs['conversation_id']
-          return Message.objects.filter(conversation_id=conversation_id)
-     
-     def perform_destroy(self, instance):
-          if instance.sender != self.request.user:
-               raise PermissionDenied("You are not the sender of this message")
-          instance.delete()
-          return Response(status = status.HTTP_204_NO_CONTENT)
+    messages = conversation.messages.all().order_by("timestamp")
+
+    serializer = PrivateMessageSerializer(messages, many=True)
+
+    return Response(serializer.data)

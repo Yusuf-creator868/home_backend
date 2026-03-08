@@ -1,206 +1,92 @@
-from asgiref.sync import sync_to_async
 import json
-import jwt
-from channels.generic.websocket import AsyncJsonWebsocketConsumer
-from django.contrib.auth import get_user_model
-from django.conf import settings
-from .models import *
+from channels.generic.websocket import AsyncWebsocketConsumer
+from django.contrib.auth.models import User
+from channels.db import database_sync_to_async
+from .models import PrivateConversation, PrivateMessage
 from urllib.parse import parse_qs
+import jwt
+from django.conf import settings
 
-User = get_user_model()
+class PrivateChatConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+    
+        # Authenticate user
+        query_string = self.scope["query_string"].decode()
+        query_params = parse_qs(query_string)
+        token = query_params.get("token")
 
-class ChatConsumer(AsyncJsonWebsocketConsumer):
-      async def connect(self):
-            query_string = self.scope['query_string'].decode('utf-8')
-            params = parse_qs(query_string)
-            token = params.get('token', [None])[0]
+        if not token:
+           await self.close()
+           return
+        try: 
+            decoded = jwt.decode(token[0], settings.SECRET_KEY, algorithms=["HS256"])
+            self.user = await database_sync_to_async(User.objects.get)(id=decoded["user_id"])
+        except Exception:
+            await self.close()
+            return
+        
+        
+        if not self.user.is_authenticated: 
+            await self.close() 
+            return
+        
+        self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
+        self.room_group_name = f'private_{self.conversation_id}'
+        
+        # Join room group
+        await self.channel_layer.group_add(
+            self.room_group_name,
+            self.channel_name
+        )
 
-            if token:
-                  try:
-                        decode_data = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
-                        self.user = await self.get_user(decode_data['user_id'])
-                        self.scope['user'] = self.user
-                  except jwt.ExpiredSignatureError:
-                        await self.close(code=4000)
-                        return
-                  except jwt.InvalidTokenError:
-                        await self.close(code=4001)
-                        return
-            else:
-                  await self.close(code=4002)
-                  return
-            
-            self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
-            self.room_group_name = f"caht_{self.conversation_id}"
+        await self.accept()
 
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name
+        )
 
-            
-            # Add channel to the group
-            
-            await self.channel_layer.group_add(
-                  self.room_group_name,
-                  self.channel_name
-            )
+    # Receive message from WebSocket
+    async def receive(self, text_data):
+        data = json.loads(text_data)
+        message_body = data.get('body')
 
-            # Accept websocket connections
+        if message_body:
+            message = await self.create_message(message_body)
 
-            await self.accept()
-
-            user_data = await self.get_user_data(self.user)
+            # Send message to group
             await self.channel_layer.group_send(
-                  self.room_group_name,
-                  {
-                        'type': 'online_status',
-                        'online_users': [user_data],
-                        'status': 'online',
-                  }
+                self.room_group_name,
+                {
+                    'type': 'chat_message',
+                    'message': {
+                        'id': message.id,
+                        'sender': message.sender.username,
+                        'body': message.body,
+                        'timestamp': str(message.timestamp)
+                    }
+                }
             )
-      
-      async def disconnect(self, close_code):
-            if hasattr(self, 'room_group_name'):
-                  user_data = await self.get_user_data(self.scope["user"])
-                  await self.channel_layer.group_send(
-                        self.room_group_name,
-                        {
-                              'type': 'online_status',
-                              'online_users': [user_data],
-                              'status': 'offline',
-                        }
-                  )
 
-                  await self.channel_layer.group_discard(
-                        self.room_group_name,
-                        self.channel_name
-                  )
-      
-      async def receive(self, text_data ):
-            text_data_json = json.load(text_data)
-            event_type = text_data_json.get('type')
+    # Receive message from room group
+    async def chat_message(self, event):
+        await self.send(text_data=json.dumps(event['message']))
 
-            if event_type == 'chat_message':
-                  message_content = text_data_json.get('message')
-                  user_id = text_data_json.get('user')
+    # DB methods
+    @database_sync_to_async
+    def check_participant(self):
+        try:
+            conversation = PrivateConversation.objects.get(id=self.conversation_id)
+            return self.user in conversation.participants.all()
+        except PrivateConversation.DoesNotExist:
+            return False
 
-                  try:
-                        user = await self.get_user(user_id)
-                        conversation = await self.get_conversation(self.conversation_id)
-                        from .serializer import UserListSerializer
-                        user_data = UserListSerializer(user).data
-
-                        # say message to the group/database
-
-                        message = await self.save_message(conversation, user, message_content)
-
-                        # broadcast the message to the group
-
-                        await self.channel_layer.group_send(
-                              self.room_group_name,
-                              {
-                                    'type': 'chat_message',
-                                    'message': message.content,
-                                    'user': user_data,
-                                    'timestamp': message.timestamp.isoformat(),
-                              }
-                        )
-                  except Exception as e:
-                        print(f"Error saving message: {e}")
-
-            elif event_type == "typing":
-                  try:
-                        user_data = await self.get_user_data(self.scope['user'])
-                        receiver_id = text_data_json.get('receiver')
-
-                        if receiver_id is not None:
-
-                              if isinstance(receiver_id, (str, int, float)):
-                                    receiver_id = int(receiver_id)
-
-                                    if receiver_id != self.scope['user'].id:
-                                          print(F'{user_data['username']} is typing for Receiver: {receiver_id}')
-                                          await self.channel_layer.group_send(
-                                                self.room_group_name,
-                                                {
-                                                      'type': 'typing',
-                                                      'user': user_data,
-                                                      'receiver': receiver_id,
-                                                }
-                                          )
-                                    else:
-                                          print(f"User is typing for themselves")
-
-                              else:
-                                    print(f"Invalid receiver ID: {type(receiver_id)}")
-
-                        else:
-                              print(f"No receiver ID provided")
-
-                  except ValueError as e:
-                         print(f"Error parsing receiver ID: {e}")
-                  
-                  except Exception as e:
-                         print(f"Error getting user data: {e}")
-
-      
-      # helper fumction
-
-      async def chat_message(self, event):
-            message = event['message']
-            user = event['user']
-            timestamp = event['timestamp']
-            await self.send(text_data = json.dumps({
-                  'type': "chat_message",
-                  'message': message,
-                  'user': user,
-                  'timestamp': timestamp,
-            }))
-
-      
-      async def typing(self, event):
-            user = event['user'],
-            receiver = event.get('receiver')
-            is_typing = event.get('is_typing', False)
-            await self.send(text_data = json.dumps({
-                  'type': "typing",
-                  'user': user,
-                  'receiver': receiver,
-                  'is_typing': is_typing,
-            }))
-
-      async def online_status(self, event):
-            await self.send(text_data = json.dumps(event))
-
-      @sync_to_async
-      def get_user(self, user_id):
-            return User.objects.get(id = user_id)
-      
-      @sync_to_async
-      def get_user_data(self, user):
-            from .serializer import UserListSerializer
-            return UserListSerializer(user).data
-      
-      @sync_to_async
-      def get_conversation(self, conversation_id):
-            try:
-                  return Conversetion.objects.get(id = conversation_id)
-            except Conversetion.DoesNotExist:
-                  print(f"Conversetion with id {conversation_id} does not exist")
-                  return None
-      
-
-      @sync_to_async
-      def save_message(self, conversation, user, content):
-            message = Message.objects.create(
-                  conversation = conversation,
-                  sender = user,
-                  content = content,
-            )
-            return message
-
-
-
-
-
-            
-
-
-      
+    @database_sync_to_async
+    def create_message(self, body):
+        conversation = PrivateConversation.objects.get(id=self.conversation_id)
+        return PrivateMessage.objects.create(
+            conversation=conversation,
+            sender=self.user,
+            body=body
+        )

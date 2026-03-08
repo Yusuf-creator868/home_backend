@@ -52,12 +52,12 @@ class HomeSerializer(serializers.ModelSerializer):
 
 class HomeDetailSerializer(serializers.ModelSerializer):
     images = PostHomeSerializer(many = True, read_only = True)
-    user = serializers.CharField(source = 'user.username', read_only = True)
+    username = serializers.CharField(source = 'user.username', read_only = True)
     created_at = serializers.SerializerMethodField()
 
     class Meta:
         model = Home
-        fields =["id", "district", "rooms", "city", "description", "bedrooms", "bedrooms_descrip", "bathrooms", "bathrooms_descrip", "livingroom_descrip", "kitchen_descrip", "area", "created_at", "images", "price", "user"]
+        fields =["id", "district", "rooms", "city", "description", "bedrooms", "bedrooms_descrip", "bathrooms", "bathrooms_descrip", "livingroom_descrip", "kitchen_descrip", "area", "created_at", "images", "price", "username", "user", ]
 
 
     def get_created_at(self, obj):

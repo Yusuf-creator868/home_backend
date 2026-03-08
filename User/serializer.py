@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.utils.timesince import timesince
 from .models import *
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
@@ -17,35 +18,37 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         user.save() 
         return user
     
-class UserListSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = User
-        fields = ('id', 'username')
-    
 
-class ConversationSerializer(serializers.ModelSerializer):
-    participants = UserListSerializer(many = True, read_only = True)
-    class Meta:
-        model = Conversetion
-        fields = ('id', 'participants', 'created_at')
 
-        def to_representation(self, instance):
-            representation = super().to_representation(instance)
-            return representation
-    
-class MessageSerializer(serializers.ModelSerializer):
-    sender = UserListSerializer()
-    participants = serializers.SerializerMethodField()
-    class Meta:
-        model = Message
-        fields = ('id', 'conversation', 'sender', 'content', 'timestamp', 'participants' )
+class PrivateMessageSerializer(serializers.ModelSerializer):
+    sender = serializers.StringRelatedField()  # or username
 
-        def get_participants(self, obj):
-            return UserListSerializer(obj.conversation.participants.all(), many = True).data
+    class Meta:
+        model = PrivateMessage
+        fields = ['id', 'sender', 'body', 'timestamp']
+
+class PrivateConversationSerializer(serializers.ModelSerializer):
+    messages = PrivateMessageSerializer(many=True, read_only=True)
+    participants = serializers.StringRelatedField(many=True)
+
+    class Meta:
+        model = PrivateConversation
+        fields = ['id', 'participants', 'messages']
         
+class PrivateConversationSerializer(serializers.ModelSerializer):
+    other_user = serializers.SerializerMethodField()
 
-class CreateMessageSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Message
-        fields = ('conversation', 'content' )
+        model = PrivateConversation
+        fields = ['id', 'other_user']
+        
+    def get_other_user(self, obj):
+        user = self.context['request'].user
+        other = obj.participants.exclude(id = user.id).first()
+        return {
+            "id": other.id,
+            "username": other.username
+        }
+
+
 
