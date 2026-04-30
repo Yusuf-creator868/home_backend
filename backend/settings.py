@@ -93,13 +93,12 @@ CSRF_COOKIE_SECURE = True
 
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://*.onrender.com",
-    "https://*.vercel.app",
+    'https://home-frontend-peach.vercel.app'
 ]
 
 
 CORS_ALLOWED_ORIGINS = [
-    "https://your-frontend.vercel.app",
+    'https://home-frontend-peach.vercel.app'
 ]
 
 
