@@ -1,58 +1,66 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from .models import Home, Images, FavoriteCart, FavoriteItems, Profile
-from .serializer import HomeSerializer, FavoritCartSerializer, FavoriteCartItemSerializer, HomeDetailSerializer, ProfileSerializer, HomeImageGallary
+from .models import *
+from .serializer import *
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated, AllowAny 
 from django.shortcuts import get_object_or_404
+from django.contrib.postgres.search import (SearchVector, SearchQuery, SearchRank, TrigramSimilarity)
+from django.db.models import Q
+from User.HellperFunctionActive import *
+from django.utils import timezone
+from datetime import timedelta
+from User.serializer import *
+from django.db.models import Count
 
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def create_home(request):
+    user = request.user
+    home = Home.objects.create(user = user, status = 'draft')
+    return Response({'id': home.id}, status=201)
+
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_home(request, pk):
+    home = Home.objects.get(id = pk, user = request.user)
+    
+    serializer = HomesSerializer(
+        home,
+        data=request.data,
+        partial=True  # IMPORTANT for PATCH
+    )
+    
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
 
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
-def create_home(request):
-    user = request.user
-    district = request.data.get("district")
-    rooms = request.data.get("rooms")
-    bedrooms = request.data.get("bedrooms")
-    bedrooms_descrip = request.data.get('bedrooms_descrip')
-    bathrooms = request.data.get("bathrooms")
-    bathrooms_descrip = request.data.get("bathrooms_descrip")
-    livingroom_descrip = request.data.get("livingroom_descrip")
-    kitchen_descrip = request.data.get("kitchen_descrip")
-    area = request.data.get("area")
-    description = request.data.get("description")
-    price = request.data.get("price")
+def upload_images(request, pk):
+    home = Home.objects.get(id=pk, user=request.user)
+
     images = request.FILES.getlist("images")
 
-    if not (district and description and price):
-        return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    home = Home.objects.create(
-        user = user,
-        district = district,
-        rooms = rooms, 
-        description = description,
-        price = price,
-        bedrooms = bedrooms,
-        bedrooms_descrip = bedrooms_descrip,
-        bathrooms = bathrooms,
-        bathrooms_descrip = bathrooms_descrip,
-        livingroom_descrip = livingroom_descrip,
-        kitchen_descrip = kitchen_descrip,
-        area = area
-
-    )
-
     for img in images:
-        Images.objects.create(home = home, image = img)
+        Images.objects.create(home=home, image=img)
 
-    serializer = HomeSerializer(home)
-    return Response(serializer.data, status=status.HTTP_201_CREATED)
+    return Response({"message": "Images uploaded"})
 
-
-
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def publish_home(request, pk):
+    home = Home.objects.get(id = pk, user = request.user)
+    home.status = 'published'
+    home.save()
+    return Response({
+        "message": "Home published successfully",
+        "status": home.status
+    })
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -81,7 +89,7 @@ def get_my_profile(request):
 
 @api_view(["GET"])
 def HomePage(request):
-    home = Home.objects.all()
+    home = Home.objects.all()[:6]
     serializer = HomeSerializer(home, many = True)
     return Response(serializer.data)
 
@@ -89,7 +97,58 @@ def HomePage(request):
 @api_view(["GET"])
 def HomeDetailPage(request, id):
     home = Home.objects.get(id = id)
-    serializer = HomeDetailSerializer(home)
+    ip = request.META.get("REMOTE_ADDR")
+    
+    # Views Feature
+    if request.user.is_authenticated:
+        
+        already_viewed = PropertyView.objects.filter(
+            property=home,
+            user=request.user,
+        ).exists()
+        
+        if not already_viewed:
+            PropertyView.objects.create(
+                property=home,
+                user=request.user,
+                ip_address=ip
+            )
+    else:
+        already_viewed = PropertyView.objects.filter(
+            property=home,
+            ip_address=ip
+        ).exists()
+        
+        if not already_viewed:
+            PropertyView.objects.create(
+                property=home,
+                ip_address=ip
+            )
+        
+            
+    if request.user.is_authenticated:         
+    # Recent activities feature 
+        recent = UserActivity.objects.filter(
+            user=request.user,
+            action="view_property",
+            object_id=home.id,
+            created_at__gte=timezone.now() - timedelta(minutes=30)).exists()
+    
+        if not recent:
+            log_activity(request.user, 'view_property', home.id, {
+                'title': home.district,
+                'city': home.city,
+            })
+        
+
+    serializer = HomeDetailSerializer(home)       
+    return Response(serializer.data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_user_activity(request):
+    activity = UserActivity.objects.filter(user = request.user).order_by('-created_at')[:4]
+    serializer = SerializerUserActivity(activity, many = True)
     return Response(serializer.data)
 
 @api_view(["POST"])
@@ -161,8 +220,30 @@ def userhomes(request):
     return Response(userhomesserializer.data)
 
 
-
-
-
-
+@api_view(['GET'])
+def property_search(request):
+    query = request.GET.get('q', '')
+    
+    vector = (
+        SearchVector('district', weight = 'A')
+    )
+    
+    search_query = SearchQuery(query)
+    
+    if len(query) < 4:
+        results = Home.objects.filter(
+        district__icontains=query
+    )[:20]
+    else:
+        results = Home.objects.annotate(
+            rank = SearchRank(vector, search_query),
+            similarity = (
+                TrigramSimilarity('district', query)
+            )
+    ).filter(
+        Q(rank__gt = 0.1) | Q(similarity__gt = 0.2)
+    ).order_by('-rank', '-similarity')[:20]
+    
+    serializer = HomeSerializer(results, many = True)
+    return Response(serializer.data)
 

@@ -23,6 +23,12 @@ class PostHomeSerializer(serializers.ModelSerializer):
     class Meta: 
         model = Images
         fields = ["id", "image"]
+        
+class HomesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Home
+        fields = '__all__'
+        read_only_fields = ["user", "status"]
 
 class HomeSerializer(serializers.ModelSerializer):
     first_image = serializers.SerializerMethodField()
@@ -31,7 +37,7 @@ class HomeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Home
-        fields = ["id", "district", "rooms", "price", "first_image", "created_at", "is_old"]
+        fields = ["id", "district", "type", "rooms", "price", "first_image", "created_at", "is_old", "status"]
 
     def get_first_image(self, obj):
         image = obj.images.first()
@@ -48,16 +54,18 @@ class HomeSerializer(serializers.ModelSerializer):
     def get_is_old(self, obj):
         delta =timezone.now() - obj.created_at
         return delta.days > 2
+    
 
 
 class HomeDetailSerializer(serializers.ModelSerializer):
     images = PostHomeSerializer(many = True, read_only = True)
     username = serializers.CharField(source = 'user.username', read_only = True)
     created_at = serializers.SerializerMethodField()
+    views_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Home
-        fields =["id", "district", "rooms", "city", "description", "bedrooms", "bedrooms_descrip", "bathrooms", "bathrooms_descrip", "livingroom_descrip", "kitchen_descrip", "area", "created_at", "images", "price", "username", "user", ]
+        fields =["id", "district", "rooms", "city", "description", "bedrooms", "bathrooms", "area", "created_at", "images", "price", "username", "user", 'views_count']
 
 
     def get_created_at(self, obj):
@@ -65,6 +73,9 @@ class HomeDetailSerializer(serializers.ModelSerializer):
 
         first_part = time.split(",")[0]
         return first_part + " ago"
+    
+    def get_views_count(self, obj):
+        return obj.views.count()
 
 
 

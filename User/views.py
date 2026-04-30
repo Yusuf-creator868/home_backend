@@ -9,8 +9,8 @@ from .models import *
 from .serializer import *
 from rest_framework import generics, permissions, status
 from rest_framework.exceptions import PermissionDenied
-
-
+import requests
+from .utils import *
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
@@ -27,7 +27,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             res.set_cookie(
                 key="access_token",
                 value= access_token,
-                httponly=False,
+                httponly=True,
                 secure=False,     # only over HTTPS
                 samesite="Lax",
                 path="/"
@@ -35,7 +35,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             res.set_cookie(
                 key="refresh_token",
                 value=refresh_token,
-                httponly=False,
+                httponly=True,
                 secure=False,     # only over HTTPS
                 samesite="Lax",
                 path="/"
@@ -66,7 +66,7 @@ class CusromRefreshTokenView(TokenRefreshView):
             res.set_cookie(
                 key="access_token",
                 value=  access_token ,
-                httponly= False,
+                httponly= True,
                 secure=False,
                 samesite = "Lax",
                 path="/"
@@ -77,6 +77,36 @@ class CusromRefreshTokenView(TokenRefreshView):
         #     return Response({'refreshed': False})
         
 
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def google_login(request):
+    token = request.data.get('token')
+    
+    if not token:
+        return Response({'error': "No token provided"}, status=404)
+    
+    google_url = f'https://oauth2.googleapis.com/tokeninfo?id_token={token}'
+    response = requests.get(google_url)
+    
+    if response.status_code != 200:
+        return Response({"error": "Invalid token"}, status=400)
+    
+    data = response.json()
+    
+    email = data.get('email')
+    name = data.get('name')
+    
+    if not email:
+        return Response({"error": "Email not available"}, status=400)
+    
+    user, created = User.objects.get_or_create(
+        email=email,
+        defaults={"username": email}
+    )
+    
+    response = Response({"success": True})
+    
+    return set_jwt_cookies(response, user)
 
         
 
@@ -85,8 +115,8 @@ def logout(request):
     try:
         res = Response()
         res.data = {"success": True}
-        res.delete_cookie("access_token", path="/", samesite = "None")
-        res.delete_cookie("refresh_token", path="/", samesite = "None")
+        res.delete_cookie("access_token", path="/")
+        res.delete_cookie("refresh_token", path="/")
         return res
     except:
         return Response({"success": False})
@@ -125,7 +155,7 @@ def private_conversation(request):
         conversation = PrivateConversation.objects.create()
         conversation.participants.add(user1, user2)
     
-    serializer = PrivateConversationSerializer(conversation)
+    serializer = PrivateConversationSerializer(conversation, context={'request': request})
     return Response(serializer.data)
 
 
@@ -142,13 +172,14 @@ def get_rooms(request):
 @permission_classes([IsAuthenticated])
 def private_messages(request, conversation_id):
 
-    conversation = get_object_or_404(PrivateConversation, id=conversation_id)
-
-    if request.user not in conversation.participants.all():
-        return Response({"error": "Not allowed"}, status=403)
+    conversation = get_object_or_404(
+    PrivateConversation,
+    id=conversation_id,
+    participants=request.user
+)
 
     messages = conversation.messages.all().order_by("timestamp")
 
-    serializer = PrivateMessageSerializer(messages, many=True)
+    serializer = PrivateMessageSerializer(messages, many=True, context={'request': request})
 
     return Response(serializer.data)

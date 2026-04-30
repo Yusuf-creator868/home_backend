@@ -51,4 +51,17 @@ class PrivateConversationSerializer(serializers.ModelSerializer):
         }
 
 
+class SerializerUserActivity(serializers.ModelSerializer):
+    created_at = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = UserActivity
+        fields = ['id', 'user', 'action', 'object_id', 'metadata', 'created_at']
+        
+    def get_created_at(self, obj):
+        time = timesince(obj.created_at)
+
+        first_part = time.split(",")[0]
+        return first_part + " ago"
+
 

@@ -3,27 +3,48 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from django.contrib.auth.models import User
 from channels.db import database_sync_to_async
 from .models import PrivateConversation, PrivateMessage
-from urllib.parse import parse_qs
-import jwt
-from django.conf import settings
+# from urllib.parse import parse_qs
+# import jwt
+# from django.conf import settings
+# from http.cookies import SimpleCookie
+from rest_framework_simplejwt.tokens import UntypedToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 
 class PrivateChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-    
-        # Authenticate user
-        query_string = self.scope["query_string"].decode()
-        query_params = parse_qs(query_string)
-        token = query_params.get("token")
+        
+        headers = dict(self.scope['headers'])
+
+        cookie_header = headers.get(b'cookie', b'').decode()
+        print("RAW COOKIE:", cookie_header)
+
+        token = None
+
+        for c in cookie_header.split('; '):
+            if c.startswith('access_token='):
+                token = c.split('=', 1)[1]
+                break
+
+        print("Token from cookie:", token)
 
         if not token:
-           await self.close()
-           return
-        try: 
-            decoded = jwt.decode(token[0], settings.SECRET_KEY, algorithms=["HS256"])
-            self.user = await database_sync_to_async(User.objects.get)(id=decoded["user_id"])
-        except Exception:
             await self.close()
             return
+        
+        try:
+            validated_token = UntypedToken(token)
+            user_id = int(validated_token["user_id"])
+
+            self.user = await database_sync_to_async(User.objects.get)(id=user_id)
+
+            print("Authenticated:", self.user)
+
+        except (InvalidToken, TokenError) as e:
+            print("JWT ERROR:", e)
+            await self.close()
+            return
+        
+        
         
         
         if not self.user.is_authenticated: 
@@ -31,6 +52,13 @@ class PrivateChatConsumer(AsyncWebsocketConsumer):
             return
         
         self.conversation_id = self.scope['url_route']['kwargs']['conversation_id']
+        
+        is_participant = await self.check_participant()
+
+        if not is_participant:
+            await self.close()
+            return
+        
         self.room_group_name = f'private_{self.conversation_id}'
         
         # Join room group
@@ -42,10 +70,13 @@ class PrivateChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(
-            self.room_group_name,
-            self.channel_name
-        )
+        if hasattr(self, 'room_group_name'):
+            await self.channel_layer.group_discard(
+                self.room_group_name,
+                self.channel_name
+            )
+        
+        
 
     # Receive message from WebSocket
     async def receive(self, text_data):

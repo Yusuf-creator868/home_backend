@@ -19,3 +19,20 @@ class PrivateMessage(models.Model):
     
     class Meta:
         ordering = ['timestamp']
+        
+class UserActivity(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    action = models.CharField(max_length=100)
+    # e.g. "view_property", "save_property", "send_message"
+
+    object_id = models.IntegerField(null=True, blank=True)
+    # property id or chat id etc.
+
+    metadata = models.JSONField(null=True, blank=True)
+    # extra info like city, price, etc.
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f'{self.user} activity'
