@@ -3,7 +3,8 @@
 import django.contrib.postgres.indexes
 from django.conf import settings
 from django.db import migrations
-
+from django.contrib.postgres.operations import TrigramExtension
+from django.contrib.postgres.indexes import GinIndex
 
 class Migration(migrations.Migration):
 
@@ -13,8 +14,13 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        TrigramExtension(),
         migrations.AddIndex(
             model_name='home',
-            index=django.contrib.postgres.indexes.GinIndex(fields=['district'], name='district_trgm', opclasses=['gin_trgm_ops']),
+             index=GinIndex(
+                fields=['district'],
+                name='district_trgm',
+                opclasses=['gin_trgm_ops']
+            ),
         ),
     ]
