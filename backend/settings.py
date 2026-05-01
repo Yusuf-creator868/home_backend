@@ -92,12 +92,12 @@ CSRF_COOKIE_SECURE = True
 
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://home-frontend-5o0heaxew-yusufs-projects-9686e9ba.vercel.app'
+    'https://home-frontend-nxk89npii-yusufs-projects-9686e9ba.vercel.app'
 ]
 
 
 CORS_ALLOWED_ORIGINS = [
-    'https://home-frontend-5o0heaxew-yusufs-projects-9686e9ba.vercel.app'
+    'https://home-frontend-nxk89npii-yusufs-projects-9686e9ba.vercel.app'
 ]
 
 
