@@ -106,12 +106,12 @@ REST_USE_JWT = True
 # =========================
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://home-frontend-nxk89npii-yusufs-projects-9686e9ba.vercel.app'
+    'https://home-frontend-peach.vercel.app'
 ]
 
 
 CORS_ALLOWED_ORIGINS = [
-    'https://home-frontend-nxk89npii-yusufs-projects-9686e9ba.vercel.app'
+    'https://home-frontend-peach.vercel.app'
 ]
 
 
