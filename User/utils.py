@@ -8,16 +8,18 @@ def set_jwt_cookies(response, user):
         key='access_token',
         value=str(refresh.access_token),
         httponly=True,
-        secure=False,  # True in production
-        samesite='Lax'
+        secure=True,          # ✅ MUST be True on Vercel/Render (HTTPS)
+        samesite='None',      # ✅ REQUIRED for cross-domain
+        path='/'
     )
 
     response.set_cookie(
         key='refresh_token',
         value=str(refresh),
         httponly=True,
-        secure=False,
-        samesite='Lax'
+        secure=True,
+        samesite='None',
+        path='/'
     )
 
     return response

@@ -26,18 +26,18 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
             res.set_cookie(
                 key="access_token",
-                value= access_token,
+                value=access_token,
                 httponly=True,
-                secure=False,     # only over HTTPS
-                samesite="Lax",
+                secure=True,          # 🔥 MUST be True in production
+                samesite="None",      # 🔥 CRITICAL
                 path="/"
             )
             res.set_cookie(
                 key="refresh_token",
                 value=refresh_token,
                 httponly=True,
-                secure=False,     # only over HTTPS
-                samesite="Lax",
+                secure=True,
+                samesite="None",
                 path="/"
             )   
             return res
@@ -65,10 +65,10 @@ class CusromRefreshTokenView(TokenRefreshView):
 
             res.set_cookie(
                 key="access_token",
-                value=  access_token ,
-                httponly= True,
-                secure=False,
-                samesite = "Lax",
+                value=access_token,
+                httponly=True,
+                secure=True,          # 🔥 MUST be True in production
+                samesite="None",      # 🔥 CRITICAL
                 path="/"
             )
             return res
