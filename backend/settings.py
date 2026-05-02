@@ -31,7 +31,19 @@ ALLOWED_HOSTS = [
     '*'
 ]
 
+
+# Required for HTTPS behind Render proxy
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+
+# Force HTTPS
+SECURE_SSL_REDIRECT = True
+
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
+CSRF_COOKIE_SAMESITE = "None"
+SESSION_COOKIE_SAMESITE = "None"
 
 
 # Application definition
@@ -56,7 +68,6 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -64,6 +75,11 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+
+# =========================
+# 🔐 AUTH / JWT
+# =========================
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
@@ -79,17 +95,15 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
 }
 
-CSRF_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SAMESITE = "None"
 
-SECURE_SSL_REDIRECT = True
 
 REST_USE_JWT = True
 
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
 
 
+# =========================
+# 🌐 CORS / CSRF
+# =========================
 
 CSRF_TRUSTED_ORIGINS = [
     'https://home-frontend-nxk89npii-yusufs-projects-9686e9ba.vercel.app'
@@ -179,32 +193,50 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
-STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
-STATICFILES_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+# =========================
+# ☁️ AWS S3 CONFIG
+# =========================
 
+# 🔑 Credentials
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+
+# 📦 Bucket
 AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
 AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME")
-AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com"
+
+# 🔥 IMPORTANT: include region in domain
+AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com"
+
+# ✅ This tells Django how to build URLs
 MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
 
-AWS_QUERYSTRING_AUTH = False
-AWS_DEFAULT_ACL = None
-AWS_S3_FILE_OVERWRITE = False
+# Optional but useful
+AWS_QUERYSTRING_AUTH = False   # cleaner URLs
+AWS_DEFAULT_ACL = None         # modern AWS requires this
+AWS_S3_FILE_OVERWRITE = False  # prevents overwriting files
 
+# 📁 Storage backend (uploads go to S3)
 DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
 
+# =========================
+# 📦 STATIC FILES (also S3)
+# =========================
+
+# Static files will also go to S3
+STATICFILES_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+
+# Optional: keep static in separate folder inside bucket
+AWS_LOCATION = "static"
+
+STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/"
+
+# =========================
+# 🔐 SECURITY HEADERS
+# =========================
 SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
-
-# STATIC_URL = 'static/'
-# MEDIA_URL = "media/"
-# MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 
 
 # Default primary key field type
