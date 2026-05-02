@@ -217,14 +217,14 @@ AWS_DEFAULT_ACL = None         # modern AWS requires this
 AWS_S3_FILE_OVERWRITE = False  # prevents overwriting files
 
 # 📁 Storage backend (uploads go to S3)
-DEFAULT_FILE_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
-
-# =========================
-# 📦 STATIC FILES (also S3)
-# =========================
-
-# Static files will also go to S3
-STATICFILES_STORAGE = "storages.backends.s3boto3.S3Boto3Storage"
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+}
 
 # Optional: keep static in separate folder inside bucket
 AWS_LOCATION = "static"
