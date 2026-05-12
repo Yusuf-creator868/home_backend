@@ -14,6 +14,8 @@ from pathlib import Path
 import os
 from datetime import timedelta
 import dj_database_url
+from dotenv import load_dotenv
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -33,17 +35,21 @@ ALLOWED_HOSTS = [
 
 
 # Required for HTTPS behind Render proxy
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Force HTTPS
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = False
+SESSION_COOKIE_SECURE = False
+CSRF_COOKIE_SECURE = False
 
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-
-CSRF_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SAMESITE = "None"
+if DEBUG:
+    CSRF_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SAMESITE = "Lax"
+else:
+    CSRF_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SAMESITE = "None"
 
 
 # Application definition
@@ -106,12 +112,16 @@ REST_USE_JWT = True
 # =========================
 
 CSRF_TRUSTED_ORIGINS = [
-    'https://home-frontend-peach.vercel.app'
+    'https://home-frontend-peach.vercel.app',
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
 ]
 
 
 CORS_ALLOWED_ORIGINS = [
-    'https://home-frontend-peach.vercel.app'
+    'https://home-frontend-peach.vercel.app',
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
 ]
 
 
@@ -138,27 +148,71 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 ASGI_APPLICATION = 'backend.asgi.application'
 
-CHANNEL_LAYERS = {
+if DEBUG:
+    CHANNEL_LAYERS = {
       'default': {
             'BACKEND': 'channels_redis.core.RedisChannelLayer',
             'CONFIG': {
-                  'hosts': [os.environ.get("REDIS_URL")],
-                  "capacity": 1500,
-                  "expiry": 10,
+                  'hosts': [('127.0.0.1', 6379)]
             }
       },
 }
 
 
+    CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/1",
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        }
+    }
+}
+
+else:
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels_redis.core.RedisChannelLayer',
+            'CONFIG': {
+                'hosts': [os.environ.get("REDIS_URL")],
+                "capacity": 1500,
+                "expiry": 10,
+            }
+        },
+    }
+
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": os.getenv("REDIS_URL"),
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            }
+        }
+    }
+
+
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": dj_database_url.parse(
-        os.environ.get("DATABASE_URL")
-    )
+if DEBUG:
+    DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'homerent',
+        'USER': 'homerent_user',
+        'PASSWORD': '12345678',
+        'HOST': 'localhost',
+        'PORT': '5432',
+    }
 }
 
+else:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            os.environ.get("DATABASE_URL")
+        )
+    }
 
 
 # Password validation
@@ -193,43 +247,45 @@ USE_I18N = True
 USE_TZ = True
 
 
-# =========================
-# ☁️ AWS S3 CONFIG
-# =========================
 
-# 🔑 Credentials
-AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
+if DEBUG:
+    STATIC_URL = "/static/"
+    STATICFILES_DIRS = []
 
-# 📦 Bucket
-AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
-AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME")
+    MEDIA_URL = "/media/"
+    MEDIA_ROOT = BASE_DIR / "media"
 
-# 🔥 IMPORTANT: include region in domain
-AWS_S3_CUSTOM_DOMAIN = f"{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com"
+else:
+    # AWS S3
+    AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY")
 
-# ✅ This tells Django how to build URLs
-MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+    AWS_STORAGE_BUCKET_NAME = os.environ.get("AWS_STORAGE_BUCKET_NAME")
+    AWS_S3_REGION_NAME = os.environ.get("AWS_S3_REGION_NAME")
 
-# Optional but useful
-AWS_QUERYSTRING_AUTH = False   # cleaner URLs
-AWS_DEFAULT_ACL = None         # modern AWS requires this
-AWS_S3_FILE_OVERWRITE = False  # prevents overwriting files
+    AWS_S3_CUSTOM_DOMAIN = (
+        f"{AWS_STORAGE_BUCKET_NAME}.s3.{AWS_S3_REGION_NAME}.amazonaws.com"
+    )
 
-# 📁 Storage backend (uploads go to S3)
-STORAGES = {
-    "default": {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-    },
-    "staticfiles": {
-        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
-    },
-}
+    AWS_QUERYSTRING_AUTH = False
+    AWS_DEFAULT_ACL = None
+    AWS_S3_FILE_OVERWRITE = False
 
-# Optional: keep static in separate folder inside bucket
-AWS_LOCATION = "static"
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        },
+        "staticfiles": {
+            "BACKEND": "storages.backends.s3boto3.S3StaticStorage",
+        },
+    }
 
-STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/"
+    AWS_LOCATION = "static"
+
+    STATIC_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/{AWS_LOCATION}/"
+
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+
 
 # =========================
 # 🔐 SECURITY HEADERS

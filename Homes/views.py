@@ -1,5 +1,6 @@
 from django.shortcuts import render
 from rest_framework.response import Response
+from django.core.cache import cache
 from rest_framework.decorators import api_view, permission_classes
 from .models import *
 from .serializer import *
@@ -89,9 +90,18 @@ def get_my_profile(request):
 
 @api_view(["GET"])
 def HomePage(request):
-    home = Home.objects.all()[:6]
-    serializer = HomeSerializer(home, many = True)
-    return Response(serializer.data)
+    cache_key = 'homepage_data'
+    data = cache.get(cache_key)
+    print("CACHE HIT:", data is not None)
+    print("CACHE VALUE:", data)
+    if data is None:
+        home = Home.objects.all()[:6]
+        serializer = HomeSerializer(home, many = True)
+        data = serializer.data
+        cache.set(cache_key, data, timeout=60*20)
+        
+    return Response(data)
+
 
 
 @api_view(["GET"])
